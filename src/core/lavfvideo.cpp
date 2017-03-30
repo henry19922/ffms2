@@ -71,12 +71,17 @@ class FFLAVFVideo : public FFMS_VideoSource {
 
 public:
 	FFLAVFVideo(const char *SourceFile, int Track, FFMS_Index &Index, int Threads, int SeekMode);
+	FFLAVFVideo(const char *VidBuf, int64_t Buf_len, int Track, FFMS_Index &Index, int Threads, int SeekMode);
 	FFMS_Frame *GetFrame(int n) override;
 };
 
 void FFLAVFVideo::Free(bool CloseCodec) {
+	if (FormatContext->pb != nullptr)
+	{
+		av_free(FormatContext->pb->buffer);	//一定要有这部释放存放视频的内存
+	}
 	if (CloseCodec)
-		avcodec_free_context(&CodecContext);
+		avcodec_free_context (&CodecContext);
 	avformat_close_input(&FormatContext);
 }
 
@@ -87,6 +92,84 @@ FFLAVFVideo::FFLAVFVideo(const char *SourceFile, int Track, FFMS_Index &Index,
 , Res(this)
 {
 	LAVFOpenFile(SourceFile, FormatContext, VideoTrack);
+
+	AVCodec *Codec = avcodec_find_decoder(FormatContext->streams[VideoTrack]->FFMSCODEC->codec_id);
+	if (Codec == nullptr)
+		throw FFMS_Exception(FFMS_ERROR_DECODING, FFMS_ERROR_CODEC,
+			"Video codec not found");
+
+	CodecContext = avcodec_alloc_context3(Codec);
+	if (CodecContext == nullptr)
+		throw FFMS_Exception(FFMS_ERROR_DECODING, FFMS_ERROR_ALLOCATION_FAILED,
+			"Could not allocate video codec context.");
+	if (make_context(CodecContext, FormatContext->streams[VideoTrack]) < 0)
+		throw FFMS_Exception(FFMS_ERROR_DECODING, FFMS_ERROR_CODEC,
+			"Could not copy video decoder paramaters.");
+	CodecContext->thread_count = DecodingThreads;
+	CodecContext->has_b_frames = Frames.MaxBFrames;
+
+	if (avcodec_open2(CodecContext, Codec, nullptr) < 0)
+		throw FFMS_Exception(FFMS_ERROR_DECODING, FFMS_ERROR_CODEC,
+			"Could not open video codec");
+
+	Res.CloseCodec(true);
+
+	// Always try to decode a frame to make sure all required parameters are known
+	int64_t DummyPTS = 0, DummyPos = 0;
+	DecodeNextFrame(DummyPTS, DummyPos);
+
+	//VP.image_type = VideoInfo::IT_TFF;
+	VP.FPSDenominator = FormatContext->streams[VideoTrack]->time_base.num;
+	VP.FPSNumerator = FormatContext->streams[VideoTrack]->time_base.den;
+
+	// sanity check framerate
+	if (VP.FPSDenominator > VP.FPSNumerator || VP.FPSDenominator <= 0 || VP.FPSNumerator <= 0) {
+		VP.FPSDenominator = 1;
+		VP.FPSNumerator = 30;
+	}
+
+	// Calculate the average framerate
+	if (Frames.size() >= 2) {
+		double PTSDiff = (double)(Frames.back().PTS - Frames.front().PTS);
+		double TD = (double)(Frames.TB.Den);
+		double TN = (double)(Frames.TB.Num);
+		VP.FPSDenominator = (unsigned int)(PTSDiff * TN / TD * 1000.0 / (Frames.size() - 1));
+		VP.FPSNumerator = 1000000;
+	}
+
+	// Set the video properties from the codec context
+	SetVideoProperties();
+
+	// Set the SAR from the container if the codec SAR is invalid
+	if (VP.SARNum <= 0 || VP.SARDen <= 0) {
+		VP.SARNum = FormatContext->streams[VideoTrack]->sample_aspect_ratio.num;
+		VP.SARDen = FormatContext->streams[VideoTrack]->sample_aspect_ratio.den;
+	}
+
+	if (SeekMode >= 0 && Frames.size() > 1) {
+		if (Seek(0) < 0) {
+			throw FFMS_Exception(FFMS_ERROR_DECODING, FFMS_ERROR_CODEC,
+				"Video track is unseekable");
+		} else {
+			Seek(0);
+			FlushBuffers(CodecContext);
+			// Since we seeked to frame 0 we need to specify that frame 0 is once again the next frame that wil be decoded
+			CurrentFrame = 0;
+		}
+	}
+
+	// Cannot "output" without doing all other initialization
+	// This is the additional mess required for seekmode=-1 to work in a reasonable way
+	OutputFrame(DecodeFrame);
+}
+
+FFLAVFVideo::FFLAVFVideo(const char *VidBuf, int64_t Buf_len, int Track, FFMS_Index &Index,
+	int Threads, int SeekMode)
+: FFMS_VideoSource(VidBuf, Buf_len, Index, Track, Threads)
+, SeekMode(SeekMode)
+, Res(this)
+{
+	LAVFOpenFileMem(VidBuf, Buf_len, FormatContext, VideoTrack);
 
 	AVCodec *Codec = avcodec_find_decoder(FormatContext->streams[VideoTrack]->FFMSCODEC->codec_id);
 	if (Codec == nullptr)
@@ -294,4 +377,8 @@ FFMS_Frame *FFLAVFVideo::GetFrame(int n) {
 
 FFMS_VideoSource *CreateLavfVideoSource(const char *SourceFile, int Track, FFMS_Index &Index, int Threads, int SeekMode) {
 	return new FFLAVFVideo(SourceFile, Track, Index, Threads, SeekMode);
+}
+
+FFMS_VideoSource *CreateLavfVideoSourceMem(const char *VidBuf, int64_t Buf_len, int Track, FFMS_Index &Index, int Threads, int SeekMode) {
+	return new FFLAVFVideo(VidBuf, Buf_len, Track, Index, Threads, SeekMode);
 }

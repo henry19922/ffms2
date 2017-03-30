@@ -164,6 +164,69 @@ FFMS_VideoSource::FFMS_VideoSource(const char *SourceFile, FFMS_Index &Index, in
 	Index.AddRef();
 }
 
+FFMS_VideoSource::FFMS_VideoSource(const char *Vid_buf, int64_t buf_len, FFMS_Index &Index, int Track, int Threads)
+: Index(Index)
+, CodecContext(nullptr)
+{
+	if (Track < 0 || Track >= static_cast<int>(Index.size()))
+		throw FFMS_Exception(FFMS_ERROR_INDEX, FFMS_ERROR_INVALID_ARGUMENT,
+			"Out of bounds track index selected");
+
+	if (Index[Track].TT != FFMS_TYPE_VIDEO)
+		throw FFMS_Exception(FFMS_ERROR_INDEX, FFMS_ERROR_INVALID_ARGUMENT,
+			"Not a video track");
+
+	if (Index[Track].empty())
+		throw FFMS_Exception(FFMS_ERROR_INDEX, FFMS_ERROR_INVALID_ARGUMENT,
+			"Video track contains no frames");
+
+	if (!Index.CompareFileSignatureMem(Vid_buf, buf_len))
+		throw FFMS_Exception(FFMS_ERROR_INDEX, FFMS_ERROR_FILE_MISMATCH,
+			"The index does not match the source file");
+
+	Frames = Index[Track];
+	VideoTrack = Track;
+
+	VP = {};
+	LocalFrame = {};
+	SWS = nullptr;
+	LastFrameNum = 0;
+	CurrentFrame = 1;
+	DelayCounter = 0;
+	InitialDecode = 1;
+
+	LastFrameHeight = -1;
+	LastFrameWidth = -1;
+	LastFramePixelFormat = FFMS_PIX_FMT(NONE);
+
+	TargetHeight = -1;
+	TargetWidth = -1;
+	TargetResizer = 0;
+
+	OutputFormat = FFMS_PIX_FMT(NONE);
+	OutputColorSpace = AVCOL_SPC_UNSPECIFIED;
+	OutputColorRange = AVCOL_RANGE_UNSPECIFIED;
+
+	InputFormatOverridden = false;
+	InputFormat = FFMS_PIX_FMT(NONE);
+	InputColorSpace = AVCOL_SPC_UNSPECIFIED;
+	InputColorRange = AVCOL_RANGE_UNSPECIFIED;
+	if (Threads < 1)
+		// libav current has issues with greater than 16 threads
+		DecodingThreads = (std::min)(std::thread::hardware_concurrency(), 16u);
+	else
+		DecodingThreads = Threads;
+	DecodeFrame = av_frame_alloc();
+	LastDecodedFrame = av_frame_alloc();
+
+	// Dummy allocations so the unallocated case doesn't have to be handled later
+	if (av_image_alloc(SWSFrameData, SWSFrameLinesize, 16, 16, FFMS_PIX_FMT(GRAY8), 4) < 0)
+		throw FFMS_Exception(FFMS_ERROR_INDEX, FFMS_ERROR_ALLOCATION_FAILED,
+			"Could not allocate dummy frame.");
+
+	Index.AddRef();
+}
+
 FFMS_VideoSource::~FFMS_VideoSource() {
 	if (SWS)
 		sws_freeContext(SWS);

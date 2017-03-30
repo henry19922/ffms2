@@ -114,14 +114,72 @@ void FillAP(FFMS_AudioProperties &AP, AVCodecContext *CTX, FFMS_Track &Frames) {
 
 	if (AP.ChannelLayout == 0)
 		AP.ChannelLayout = av_get_default_channel_layout(AP.Channels);
-}
 
+}
 // End of filename hackery.
 
 void LAVFOpenFile(const char *SourceFile, AVFormatContext *&FormatContext, int Track) {
 	if (avformat_open_input(&FormatContext, SourceFile, nullptr, nullptr) != 0)
 		throw FFMS_Exception(FFMS_ERROR_PARSER, FFMS_ERROR_FILE_READ,
 			std::string("Couldn't open '") + SourceFile + "'");
+
+	if (avformat_find_stream_info(FormatContext,nullptr) < 0) {
+		avformat_close_input(&FormatContext);
+		FormatContext = nullptr;
+		throw FFMS_Exception(FFMS_ERROR_PARSER, FFMS_ERROR_FILE_READ,
+			"Couldn't find stream information");
+	}
+
+	for (int i = 0; i < (int) FormatContext->nb_streams; i++)
+		if (i != Track)
+			FormatContext->streams[i]->discard = AVDISCARD_ALL;
+}
+
+/**
+ * this function should return a negative value
+ * to stop the read packet
+ */
+int fill_iobuffer2(void *opaque, uint8_t *buf, int buf_size)
+{
+	user_data *my_data = (user_data *) opaque;
+	if (my_data->End)
+	{
+		return -1;
+	}
+	else
+	{
+		if(my_data->OrgBuf==nullptr)	//prevent crash
+		{
+			my_data->End = true;
+			return -2;
+		}
+		memmove(buf, my_data->OrgBuf, buf_size);
+		my_data->End = true;
+		return buf_size;
+	}
+}
+
+void LAVFOpenFileMem(const char *VidBuf, int64_t Buf_len, AVFormatContext *&FormatContext, int Track) {
+	if (FormatContext == nullptr)
+	{
+		FormatContext = avformat_alloc_context();
+	}
+	unsigned char * iobuffer = (unsigned char *) av_malloc(Buf_len);
+	user_data my_data={VidBuf, false};
+	AVIOContext *avio = avio_alloc_context(iobuffer, Buf_len, 0,
+			(void *) &my_data, fill_iobuffer2, NULL, NULL);
+	if (avio == nullptr)
+	{
+		av_free(iobuffer);
+		throw FFMS_Exception(FFMS_ERROR_PARSER2, FFMS_ERROR_ALLOCATION_FAILED,
+				std::string("avio_alloc_context failed"));
+		return;
+	}
+	FormatContext->pb = avio;
+
+	if (avformat_open_input(&FormatContext, "", nullptr, nullptr) != 0)
+		throw FFMS_Exception(FFMS_ERROR_PARSER, FFMS_ERROR_FILE_READ,
+			std::string("Couldn't open file in mem"));
 
 	if (avformat_find_stream_info(FormatContext,nullptr) < 0) {
 		avformat_close_input(&FormatContext);

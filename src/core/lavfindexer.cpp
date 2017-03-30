@@ -47,7 +47,26 @@ public:
 				IndexMask[i] = false;
 	}
 
+	FFLAVFIndexer(const char *Vid_Buf, int64_t Buf_Len, AVFormatContext *FormatContext)
+	: FFMS_Indexer(Vid_Buf, Buf_Len)
+	, FormatContext(FormatContext)
+	{
+		if (avformat_find_stream_info(FormatContext,nullptr) < 0) {
+			avformat_close_input(&FormatContext);
+			throw FFMS_Exception(FFMS_ERROR_PARSER, FFMS_ERROR_FILE_READ,
+				"Couldn't find stream information");
+		}
+
+		for (unsigned int i = 0; i < FormatContext->nb_streams; i++)
+			if (FormatContext->streams[i]->FFMSCODEC->codec_type == AVMEDIA_TYPE_VIDEO)
+				IndexMask[i] = false;
+	}
+
 	~FFLAVFIndexer() {
+		if(FormatContext->pb!=nullptr)
+		{
+			av_free(FormatContext->pb->buffer);	//一定要有这部释放存放视频的内存
+		}
 		avformat_close_input(&FormatContext);
 	}
 
@@ -220,4 +239,8 @@ void FFLAVFIndexer::ReadTS(const AVPacket &Packet, int64_t &TS, bool &UseDTS) {
 
 FFMS_Indexer *CreateLavfIndexer(const char *Filename, AVFormatContext *FormatContext) {
 	return new FFLAVFIndexer(Filename, FormatContext);
+}
+
+FFMS_Indexer *CreateLavfIndexer(const char *Vid_Buf, int64_t Buf_Len, AVFormatContext *FormatContext){
+	return new FFLAVFIndexer(Vid_Buf, Buf_Len, FormatContext);
 }

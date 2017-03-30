@@ -83,6 +83,36 @@ void FFMS_Index::CalculateFileSignature(const char *Filename, int64_t *Filesize,
 	av_sha_final(ctx, Digest);
 }
 
+void FFMS_Index::CalculateFileSignatureMem(const char *Vid_buf, int64_t buf_len, int64_t *Filesize, uint8_t Digest[20]) {
+//	FileHandle file(Filename, "rb", FFMS_ERROR_INDEX, FFMS_ERROR_FILE_READ);
+
+#if VERSION_CHECK(LIBAVUTIL_VERSION_INT, >=, 51, 43, 0, 51, 75, 100)
+	unknown_size<AVSHA, av_sha_alloc, ffms_free_sha> ctx;
+#else
+	std::vector<uint8_t> ctxmem(av_sha_size);
+	AVSHA *ctx = (AVSHA*)(ctxmem.data());
+#endif
+	av_sha_init(ctx, 160);
+
+	try {
+		*Filesize = buf_len;
+//		std::vector<char> FileBuffer(static_cast<size_t>(std::min<int64_t>(1024*1024, *Filesize)));
+//		size_t BytesRead = file.Read(FileBuffer.data(), FileBuffer.size());
+		av_sha_update(ctx, reinterpret_cast<const uint8_t*>(Vid_buf), (unsigned int)buf_len);
+
+//		if (*Filesize > static_cast<int64_t>(FileBuffer.size())) {
+//			file.Seek(*Filesize - static_cast<int64_t>(FileBuffer.size()), SEEK_SET);
+//			BytesRead = file.Read(FileBuffer.data(), FileBuffer.size());
+//			av_sha_update(ctx, reinterpret_cast<const uint8_t*>(FileBuffer.data()), BytesRead);
+//		}
+	}
+	catch (...) {
+		av_sha_final(ctx, Digest);
+		throw;
+	}
+	av_sha_final(ctx, Digest);
+}
+
 void FFMS_Index::AddRef() {
 	++RefCount;
 }
@@ -120,6 +150,13 @@ bool FFMS_Index::CompareFileSignature(const char *Filename) {
 	int64_t CFilesize;
 	uint8_t CDigest[20];
 	CalculateFileSignature(Filename, &CFilesize, CDigest);
+	return (CFilesize == Filesize && !memcmp(CDigest, Digest, sizeof(Digest)));
+}
+
+bool FFMS_Index::CompareFileSignatureMem(const char *Vid_buf, int64_t buf_len) {
+	int64_t CFilesize;
+	uint8_t CDigest[20];
+	CalculateFileSignatureMem(Vid_buf, buf_len, &CFilesize, CDigest);
 	return (CFilesize == Filesize && !memcmp(CDigest, Digest, sizeof(Digest)));
 }
 
@@ -272,10 +309,48 @@ FFMS_Indexer *CreateIndexer(const char *Filename) {
 	return CreateLavfIndexer(Filename, FormatContext);
 }
 
+FFMS_Indexer *CreateIndexer(const char *pszVidBuf, int64_t iVidLen) {
+	AVFormatContext *FormatContext = nullptr;
+
+	if (FormatContext == nullptr)
+	{
+		FormatContext = avformat_alloc_context();
+	}
+	FormatContext->interrupt_callback;
+	unsigned char * iobuffer = (unsigned char *) av_malloc(iVidLen);
+	user_data my_data={pszVidBuf, false};
+	AVIOContext *avio = avio_alloc_context(iobuffer, iVidLen, 0,
+			(void *) &my_data, fill_iobuffer2, NULL, NULL);
+	if (avio == nullptr)
+	{
+		av_free(iobuffer);
+		throw FFMS_Exception(FFMS_ERROR_PARSER2, FFMS_ERROR_ALLOCATION_FAILED,
+				std::string("avio_alloc_context failed"));
+		return nullptr;
+	}
+	FormatContext->pb = avio;
+
+	if (avformat_open_input(&FormatContext, "", nullptr, nullptr) != 0)
+	{
+		av_free(avio->buffer);	//一定要有这部释放存放视频的内存
+		av_free(avio);
+		throw FFMS_Exception(FFMS_ERROR_PARSER, FFMS_ERROR_FILE_READ,
+			std::string("Can't open file in memory"));
+	}
+
+	return CreateLavfIndexer(pszVidBuf, iVidLen, FormatContext);
+}
+
 FFMS_Indexer::FFMS_Indexer(const char *Filename)
 : SourceFile(Filename)
 {
 	FFMS_Index::CalculateFileSignature(Filename, &Filesize, Digest);
+}
+
+FFMS_Indexer::FFMS_Indexer(const char *Vid_Buf, int64_t Buf_Len)
+: SourceFile("default.out")
+{
+	FFMS_Index::CalculateFileSignatureMem(Vid_Buf, Buf_Len, &Filesize, Digest);
 }
 
 void FFMS_Indexer::WriteAudio(SharedAudioContext &AudioContext, FFMS_Index *Index, int Track) {

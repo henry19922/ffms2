@@ -118,6 +118,20 @@ FFMS_API(FFMS_VideoSource *) FFMS_CreateVideoSource(const char *SourceFile, int 
 	}
 }
 
+FFMS_API(FFMS_VideoSource *) FFMS_CreateVideoSourceMem(const char *VidBuf, int64_t Buf_len, int Track, FFMS_Index *Index, int Threads, int SeekMode, FFMS_ErrorInfo *ErrorInfo) {
+	try {
+		switch (Index->Decoder) {
+			case FFMS_SOURCE_LAVF:
+				return CreateLavfVideoSourceMem(VidBuf, Buf_len, Track, *Index, Threads, SeekMode);
+			default:
+				throw FFMS_Exception(FFMS_ERROR_PARSER, FFMS_ERROR_FILE_READ, "Unsupported format");
+		}
+	} catch (FFMS_Exception &e) {
+		e.CopyOut(ErrorInfo);
+		return nullptr;
+	}
+}
+
 FFMS_API(FFMS_AudioSource *) FFMS_CreateAudioSource(const char *SourceFile, int Track, FFMS_Index *Index, int DelayMode, FFMS_ErrorInfo *ErrorInfo) {
 	try {
 		switch (Index->Decoder) {
@@ -368,6 +382,20 @@ FFMS_API(FFMS_Indexer *) FFMS_CreateIndexerWithDemuxer(const char *SourceFile, i
 	ClearErrorInfo(ErrorInfo);
 	try {
 		return CreateIndexer(SourceFile);
+	} catch (FFMS_Exception &e) {
+		e.CopyOut(ErrorInfo);
+		return nullptr;
+	}
+}
+
+FFMS_API(FFMS_Indexer *) FFMS_CreateIndexerMem(const char *pszVidBuf, int64_t iVidLen, FFMS_ErrorInfo *ErrorInfo) {
+	return FFMS_CreateIndexerWithDemuxerMem(pszVidBuf, iVidLen, FFMS_SOURCE_DEFAULT, ErrorInfo);
+}
+
+FFMS_API(FFMS_Indexer *) FFMS_CreateIndexerWithDemuxerMem(const char *pszVidBuf, int64_t iVidLen, int, FFMS_ErrorInfo *ErrorInfo) {
+	ClearErrorInfo(ErrorInfo);
+	try {
+		return CreateIndexer(pszVidBuf, iVidLen);
 	} catch (FFMS_Exception &e) {
 		e.CopyOut(ErrorInfo);
 		return nullptr;

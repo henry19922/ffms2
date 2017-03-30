@@ -52,6 +52,7 @@ struct FFMS_Index : public std::vector<FFMS_Track> {
 	void WriteIndex(ZipFile &zf);
 public:
 	static void CalculateFileSignature(const char *Filename, int64_t *Filesize, uint8_t Digest[20]);
+	static void CalculateFileSignatureMem(const char *Vid_buf, int64_t buf_len, int64_t *Filesize, uint8_t Digest[20]);
 
 	void AddRef();
 	void Release();
@@ -63,6 +64,7 @@ public:
 
 	void Finalize(std::vector<SharedVideoContext> const& video_contexts);
 	bool CompareFileSignature(const char *Filename);
+	bool CompareFileSignatureMem(const char *Vid_buf, int64_t buf_len);
 	void WriteIndexFile(const char *IndexFile);
 	uint8_t *WriteIndexBuffer(size_t *Size);
 
@@ -96,6 +98,7 @@ protected:
 
 public:
 	FFMS_Indexer(const char *Filename);
+	FFMS_Indexer(const char *Vid_Buf, int64_t Buf_Len);
 	virtual ~FFMS_Indexer() { }
 
 	void SetIndexTrack(int Track, bool Index, bool Dump);
@@ -114,6 +117,10 @@ public:
 
 FFMS_Indexer *CreateIndexer(const char *Filename);
 
+FFMS_Indexer *CreateIndexer(const char *VidBuf, int64_t VidLen);
+
 FFMS_Indexer *CreateLavfIndexer(const char *Filename, AVFormatContext *FormatContext);
+
+FFMS_Indexer *CreateLavfIndexer(const char *pszVidBuf, int64_t iVidLen, AVFormatContext *FormatContext);
 
 #endif

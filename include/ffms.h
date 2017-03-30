@@ -27,6 +27,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define HENRY_FLAG 1
 
 /********
 *	The following preprocessor voodoo ensures that all API symbols are exported
@@ -115,6 +116,7 @@ typedef enum FFMS_Errors {
 	FFMS_ERROR_WAVE_WRITER,			// WAVE64 file writer
 	FFMS_ERROR_CANCELLED,			// operation aborted
 	FFMS_ERROR_RESAMPLING,			// audio resampling (libavresample)
+	FFMS_ERROR_PARSER2,				// file parsing(memory)
 
 	// Subtypes - what caused the error
 	FFMS_ERROR_UNKNOWN = 20,		// unknown error
@@ -406,6 +408,9 @@ FFMS_API(int) FFMS_GetVersion();
 FFMS_API(int) FFMS_GetLogLevel();
 FFMS_API(void) FFMS_SetLogLevel(int Level);
 FFMS_API(FFMS_VideoSource *) FFMS_CreateVideoSource(const char *SourceFile, int Track, FFMS_Index *Index, int Threads, int SeekMode, FFMS_ErrorInfo *ErrorInfo);
+#if HENRY_FLAG
+FFMS_API(FFMS_VideoSource *) FFMS_CreateVideoSourceMem(const char *VidBuf, int64_t Buf_len, int Track, FFMS_Index *Index, int Threads, int SeekMode, FFMS_ErrorInfo *ErrorInfo);
+#endif
 FFMS_API(FFMS_AudioSource *) FFMS_CreateAudioSource(const char *SourceFile, int Track, FFMS_Index *Index, int DelayMode, FFMS_ErrorInfo *ErrorInfo);
 FFMS_API(void) FFMS_DestroyVideoSource(FFMS_VideoSource *V);
 FFMS_API(void) FFMS_DestroyAudioSource(FFMS_AudioSource *A);
@@ -443,7 +448,13 @@ FFMS_API(int) FFMS_WriteTimecodes(FFMS_Track *T, const char *TimecodeFile, FFMS_
 FFMS_DEPRECATED_API(FFMS_Index *) FFMS_MakeIndex(const char *SourceFile, int IndexMask, int DumpMask, TAudioNameCallback ANC, void *ANCPrivate, int ErrorHandling, TIndexCallback IC, void *ICPrivate, FFMS_ErrorInfo *ErrorInfo);
 FFMS_API(int) FFMS_DefaultAudioFilename(const char *SourceFile, int Track, const FFMS_AudioProperties *AP, char *FileName, int FNSize, void *Private);
 FFMS_API(FFMS_Indexer *) FFMS_CreateIndexer(const char *SourceFile, FFMS_ErrorInfo *ErrorInfo);
+#if HENRY_FLAG
+FFMS_API(FFMS_Indexer *) FFMS_CreateIndexerMem(const char *pszVidBuf, int64_t iVidLen,  FFMS_ErrorInfo *ErrorInfo);
+#endif
 FFMS_API(FFMS_Indexer *) FFMS_CreateIndexerWithDemuxer(const char *SourceFile, int Demuxer, FFMS_ErrorInfo *ErrorInfo);
+#if HENRY_FLAG
+FFMS_API(FFMS_Indexer *) FFMS_CreateIndexerWithDemuxerMem(const char *pszVidBuf, int64_t iVidLen, int, FFMS_ErrorInfo *ErrorInfo);
+#endif
 FFMS_DEPRECATED_API(FFMS_Index *) FFMS_DoIndexing(FFMS_Indexer *Indexer, int IndexMask, int DumpMask, TAudioNameCallback ANC, void *ANCPrivate, int ErrorHandling, TIndexCallback IC, void *ICPrivate, FFMS_ErrorInfo *ErrorInfo);
 FFMS_API(void) FFMS_TrackIndexSettings(FFMS_Indexer *Indexer, int Track, int Index, int Dump); /* Introduced in FFMS_VERSION ((2 << 24) | (21 << 16) | (0 << 8) | 0) */
 FFMS_API(void) FFMS_TrackTypeIndexSettings(FFMS_Indexer *Indexer, int TrackType, int Index, int Dump); /* Introduced in FFMS_VERSION ((2 << 24) | (21 << 16) | (0 << 8) | 0) */

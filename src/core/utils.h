@@ -45,6 +45,12 @@ extern "C" {
 #include <string>
 #include <vector>
 
+struct user_data
+{
+	const char *OrgBuf;
+	bool End;
+};
+
 const int64_t ffms_av_nopts_value = static_cast<int64_t>(UINT64_C(0x8000000000000000));
 
 class FFMS_Exception {
@@ -134,6 +140,8 @@ void InitNullPacket(AVPacket &pkt);
 void FillAP(FFMS_AudioProperties &AP, AVCodecContext *CTX, FFMS_Track &Frames);
 
 void LAVFOpenFile(const char *SourceFile, AVFormatContext *&FormatContext, int Track);
+int fill_iobuffer2(void *opaque, uint8_t *buf, int buf_size);
+void LAVFOpenFileMem(const char *VidBuf, int64_t Buf_len, AVFormatContext *&FormatContext, int Track);
 
 void FlushBuffers(AVCodecContext *CodecContext);
 

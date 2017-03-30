@@ -77,6 +77,7 @@ protected:
 	AVCodecContext *CodecContext;
 
 	FFMS_VideoSource(const char *SourceFile, FFMS_Index &Index, int Track, int Threads);
+	FFMS_VideoSource(const char *Vid_buf, int64_t buf_len, FFMS_Index &Index, int Track, int Threads);
 	void ReAdjustOutputFormat();
 	FFMS_Frame *OutputFrame(AVFrame *Frame);
 	virtual void Free(bool CloseCodec) = 0;
@@ -98,5 +99,5 @@ public:
 };
 
 FFMS_VideoSource *CreateLavfVideoSource(const char *SourceFile, int Track, FFMS_Index &Index, int Threads, int SeekMode);
-
+FFMS_VideoSource *CreateLavfVideoSourceMem(const char *VidBuf, int64_t Buf_len, int Track, FFMS_Index &Index, int Threads, int SeekMode);
 #endif
